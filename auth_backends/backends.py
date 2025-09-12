@@ -5,7 +5,6 @@ For more information visit https://docs.djangoproject.com/en/dev/topics/auth/cus
 import jwt
 from django.dispatch import Signal
 from social_core.backends.oauth import BaseOAuth2
-import pdb
 
 PROFILE_CLAIMS_TO_DETAILS_KEY_MAP = {
     'preferred_username': 'username',
@@ -32,13 +31,11 @@ def _to_language(locale):
     return locale.replace('_', '-').lower()
 
 
+# pylint: disable=abstract-method
 class EdXOAuth2(BaseOAuth2):
     """
     IMPORTANT: The oauth2 application must have access to the ``user_id`` scope in order
     to use this backend.
-
-    This backend automatically handles user session cleanup during OAuth authentication
-    to prevent incorrect user associations and ensure proper user account creation.
     """
     # used by social-auth
     ACCESS_TOKEN_METHOD = 'POST'
@@ -65,53 +62,22 @@ class EdXOAuth2(BaseOAuth2):
     auth_complete_signal = Signal()
 
     @property
+    # pylint: disable= missing-function-docstring
     def logout_url(self):
-        """Return the logout URL for the OAuth provider."""
         if self.setting('LOGOUT_REDIRECT_URL'):
             return f"{self.end_session_url()}?client_id={self.setting('KEY')}&" \
                    f"redirect_url={self.setting('LOGOUT_REDIRECT_URL')}"
         else:
             return self.end_session_url()
 
-    def _clear_existing_user_session(self):
-        """
-        Clear any existing authenticated user session.
-
-        This helper method safely logs out any currently authenticated user
-        to prevent incorrect user associations during OAuth authentication.
-
-        Returns:
-            str or None: Username of the logged out user, if any
-        """
-        from django.contrib.auth import logout
-        import logging
-
-        logger = logging.getLogger(__name__)
-        request = self.strategy.request if hasattr(self.strategy, 'request') else None
-
-        if request and hasattr(request, 'user') and request.user.is_authenticated:
-            existing_username = request.user.username
-            logger.info(
-                "OAuth authentication started with existing user session '%s'. "
-                "Clearing session to ensure clean authentication flow.",
-                existing_username
-            )
-            logout(request)
-            return existing_username
-
-        return None
-
     def start(self):
-        """
-        Initialize OAuth authentication process with session cleanup.
+        """Initialize OAuth authentication with session cleanup."""
 
-        Ensures clean authentication by clearing any existing user session
-        before starting the OAuth flow to prevent incorrect user associations.
+        # Clear any existing user session to prevent association conflicts
+        request = self.strategy.request if hasattr(self.strategy, 'request') else None
+        if request and hasattr(request, 'user') and request.user.is_authenticated:
+            logout(request)
 
-        Returns:
-            Result of parent start() method
-        """
-        self._clear_existing_user_session()
         return super().start()
 
     def authorization_url(self):
@@ -131,63 +97,12 @@ class EdXOAuth2(BaseOAuth2):
         params['token_type'] = 'jwt'
         return params
 
-    def _validate_session_user_consistency(self, oauth_response):
-        """
-        Validate that the current session user matches the OAuth response user.
-
-        This method ensures that any existing user session is consistent with
-        the OAuth authentication response to prevent incorrect user associations.
-
-        Args:
-            oauth_response (dict): OAuth response containing user information
-
-        Returns:
-            bool: True if session is consistent or cleared, False on error
-        """
-        from django.contrib.auth import logout
-        import logging
-
-        logger = logging.getLogger(__name__)
-        request = self.strategy.request if hasattr(self.strategy, 'request') else None
-
-        if not (request and hasattr(request, 'user') and request.user.is_authenticated):
-            return True
-
-        try:
-            oauth_username = oauth_response.get('preferred_username') or oauth_response.get('username')
-
-            if oauth_username and request.user.username != oauth_username:
-                existing_username = request.user.username
-                logger.warning(
-                    "User session mismatch detected during OAuth completion. "
-                    "Session user: %s, OAuth user: %s. Clearing session.",
-                    existing_username, oauth_username
-                )
-                logout(request)
-
-            return True
-        except Exception as e:
-            logger.error("Error during OAuth completion validation: %s", str(e))
-            return False
-
     def auth_complete(self, *args, **kwargs):
         """
-        Complete OAuth authentication process with session validation.
-
-        Performs session consistency validation and emits auth_complete_signal
-        to ensure proper user authentication and prevent account associations.
-
-        Args:
-            *args: Variable length argument list
-            **kwargs: Arbitrary keyword arguments including OAuth response
-
-        Returns:
-            Authenticated user instance
+        This method is overwritten to emit the `EdXOAuth2.auth_complete_signal` signal.
         """
-        # Validate session consistency with OAuth response
-        oauth_response = kwargs.get('response', {})
-        self._validate_session_user_consistency(oauth_response)
-
+        # WARNING: During testing, the user model class is `social_core.tests.models.User`,
+        # not the model specified for the application.
         user = super().auth_complete(*args, **kwargs)
         self.auth_complete_signal.send(sender=self.__class__, user=user)
         return user
