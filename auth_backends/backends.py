@@ -73,7 +73,7 @@ class EdXOAuth2(BaseOAuth2):
     def start(self):
         """Initialize OAuth authentication with session cleanup."""
 
-        # Clear any existing user session to prevent association conflicts
+        # Clear any existing user session to allow for a clean login, potentially with a different user.
         request = self.strategy.request if hasattr(self.strategy, 'request') else None
         if request and hasattr(request, 'user') and request.user.is_authenticated:
             logout(request)
