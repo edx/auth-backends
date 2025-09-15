@@ -13,6 +13,19 @@ Unreleased
 ----------
 
 
+[4.6.1] - 2025-08-26
+--------------------
+
+Added
+~~~~~
+
+* Enhanced OAuth2 authentication backend with session cleanup functionality to prevent user association conflicts.
+
+  * Added ENABLE_OAUTH_SESSION_CLEANUP toggle to control session cleanup during OAuth start process.
+  * Implemented comprehensive observability with custom attributes for monitoring authentication flows.
+  * Added logging for session cleanup operations to aid in debugging and monitoring.
+  * Enhanced start() method to clear existing user sessions before OAuth authentication when appropriate.
+
 [4.6.0] - 2025-06-18
 --------------------
 

@@ -2,9 +2,27 @@
 
 For more information visit https://docs.djangoproject.com/en/dev/topics/auth/customizing/.
 """
+import logging
 import jwt
+from django.contrib.auth import logout
 from django.dispatch import Signal
 from social_core.backends.oauth import BaseOAuth2
+from edx_toggles.toggles import SettingToggle
+from edx_django_utils.monitoring import set_custom_attribute
+
+logger = logging.getLogger(__name__)
+
+# .. toggle_name: ENABLE_OAUTH_SESSION_CLEANUP
+# .. toggle_implementation: SettingToggle
+# .. toggle_default: True
+# .. toggle_description: Controls whether to perform session cleanup during OAuth start.
+#    When enabled (True), existing user sessions are cleared before OAuth authentication
+#    to prevent user association conflicts. When disabled (False), session cleanup is skipped.
+#    This toggle allows for gradual rollout and quick rollback if issues arise.
+# .. toggle_use_cases: temporary
+# .. toggle_creation_date: 2025-09-15
+# .. toggle_target_removal_date: 2025-11-15
+ENABLE_OAUTH_SESSION_CLEANUP = SettingToggle("ENABLE_OAUTH_SESSION_CLEANUP", default=True)
 
 PROFILE_CLAIMS_TO_DETAILS_KEY_MAP = {
     'preferred_username': 'username',
@@ -31,7 +49,6 @@ def _to_language(locale):
     return locale.replace('_', '-').lower()
 
 
-# pylint: disable=abstract-method
 class EdXOAuth2(BaseOAuth2):
     """
     IMPORTANT: The oauth2 application must have access to the ``user_id`` scope in order
@@ -71,12 +88,56 @@ class EdXOAuth2(BaseOAuth2):
             return self.end_session_url()
 
     def start(self):
-        """Initialize OAuth authentication with session cleanup."""
+        """Initialize OAuth authentication with optional session cleanup."""
+
+        # .. custom_attribute_name: start.session_cleanup_toggle_enabled
+        # .. custom_attribute_description: Tracks whether the ENABLE_OAUTH_SESSION_CLEANUP
+        #    toggle is enabled during OAuth start.
+        set_custom_attribute('start.session_cleanup_toggle_enabled', ENABLE_OAUTH_SESSION_CLEANUP.is_enabled())
 
         # Clear any existing user session to allow for a clean login, potentially with a different user.
         request = self.strategy.request if hasattr(self.strategy, 'request') else None
-        if request and hasattr(request, 'user') and request.user.is_authenticated:
+
+        # .. custom_attribute_name: start.has_request
+        # .. custom_attribute_description: Tracks whether a request object is available
+        #    during OAuth start. True if request exists, False if missing.
+        set_custom_attribute('start.has_request', request is not None)
+
+        user_authenticated = (
+            request is not None and
+            hasattr(request, 'user') and
+            request.user.is_authenticated
+        )
+
+        # .. custom_attribute_name: start.user_authenticated_before_cleanup
+        # .. custom_attribute_description: Tracks whether a user was authenticated
+        #    before session cleanup. True if user was logged in, False otherwise.
+        set_custom_attribute('start.user_authenticated_before_cleanup', user_authenticated)
+
+        if user_authenticated and ENABLE_OAUTH_SESSION_CLEANUP.is_enabled():
+            existing_username = getattr(request.user, 'username', 'unknown')
+
+            # .. custom_attribute_name: start.logged_out_username
+            # .. custom_attribute_description: Records the username that was logged out
+            #    during session cleanup for tracking and debugging purposes.
+            set_custom_attribute('start.logged_out_username', existing_username)
+
+            logger.info(
+                "OAuth start: Performing session cleanup for user '%s'",
+                existing_username
+            )
+
             logout(request)
+
+            # .. custom_attribute_name: start.session_cleanup_performed
+            # .. custom_attribute_description: Indicates that session cleanup was
+            #    actually performed during OAuth start.
+            set_custom_attribute('start.session_cleanup_performed', True)
+        else:
+            # .. custom_attribute_name: start.session_cleanup_performed
+            # .. custom_attribute_description: Indicates that session cleanup was
+            #    actually performed during OAuth start.
+            set_custom_attribute('start.session_cleanup_performed', False)
 
         return super().start()
 
