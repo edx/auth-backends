@@ -126,7 +126,6 @@ packaging==25.0
     #   pytest
     #   tox
 platformdirs==4.4.0
-=======
 pbr==6.1.1
     # via
     #   -r requirements/base.txt
