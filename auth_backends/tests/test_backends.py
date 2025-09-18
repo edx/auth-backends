@@ -252,7 +252,7 @@ class EdXOAuth2Tests(OAuth2Test):
     @ddt.data(True, False)  # test toggle enabled/disabled for unauthenticated user
     def test_start_method_with_unauthenticated_user(self, toggle_enabled):
         """
-        Verify start() behavior with unauthenticated users.
+        Verify start() behavior with unauthenticated users with toggle variations.
         """
         with patch('auth_backends.backends.ENABLE_OAUTH_SESSION_CLEANUP') as mock_toggle, \
              patch('auth_backends.backends.logout') as mock_logout, \
@@ -293,7 +293,7 @@ class EdXOAuth2Tests(OAuth2Test):
     @ddt.data(True, False)  # test toggle enabled/disabled
     def test_start_method_handles_missing_request(self, toggle_enabled):
         """
-        Verify that start() handles missing request object with proper observability.
+        Verify that start() handles missing request object with proper observability and toggle variations.
         """
         with patch('auth_backends.backends.ENABLE_OAUTH_SESSION_CLEANUP') as mock_toggle, \
              patch('auth_backends.backends.logout') as mock_logout, \
@@ -330,7 +330,7 @@ class EdXOAuth2Tests(OAuth2Test):
     @ddt.data(True, False)  # test toggle enabled/disabled
     def test_start_method_handles_request_without_user(self, toggle_enabled):
         """
-        Verify that start() handles request without user attribute with proper observability.
+        Verify that start() handles request without user attribute with proper observability and toggle variations.
         """
         with patch('auth_backends.backends.ENABLE_OAUTH_SESSION_CLEANUP') as mock_toggle, \
              patch('auth_backends.backends.logout') as mock_logout, \
