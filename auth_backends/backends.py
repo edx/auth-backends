@@ -95,7 +95,6 @@ class EdXOAuth2(BaseOAuth2):
         #    toggle is enabled during OAuth start.
         set_custom_attribute('session_cleanup.toggle_enabled', ENABLE_OAUTH_SESSION_CLEANUP.is_enabled())
 
-        # Clear any existing user session to allow for a clean login, potentially with a different user.
         request = self.strategy.request if hasattr(self.strategy, 'request') else None
 
         # .. custom_attribute_name: start.has_request
