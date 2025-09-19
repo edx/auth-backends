@@ -19,7 +19,7 @@ Unreleased
 Added
 ~~~~~
 
-* Enhanced OAuth2 authentication backend with session cleanup functionality to prevent user association conflicts.
+* Enhanced OAuth2 authentication backend to logout any old session before initiating a new OAuth2 flow. This prevents user association conflicts with the previously logged-in user.
 
   * Added ENABLE_OAUTH_SESSION_CLEANUP toggle to control session cleanup during OAuth start process.
   * Implemented comprehensive observability with custom attributes for monitoring authentication flows.
