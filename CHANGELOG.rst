@@ -21,10 +21,7 @@ Added
 
 * Enhanced OAuth2 authentication backend to logout any old session before initiating a new OAuth2 flow. This prevents user association conflicts with the previously logged-in user.
 
-  * Added ENABLE_OAUTH_SESSION_CLEANUP toggle to control session cleanup during OAuth start process.
-  * Implemented comprehensive observability with custom attributes for monitoring authentication flows.
-  * Added logging for session cleanup operations to aid in debugging and monitoring.
-  * Enhanced start() method to clear existing user sessions before OAuth authentication when appropriate.
+  * Added temporary rollout toggle ENABLE_OAUTH_SESSION_CLEANUP to control session cleanup during OAuth start process.
 
 [4.6.0] - 2025-06-18
 --------------------
