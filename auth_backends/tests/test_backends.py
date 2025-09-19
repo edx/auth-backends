@@ -2,16 +2,22 @@
 import datetime
 import json
 from calendar import timegm
-from unittest.mock import call, patch, Mock
+from unittest.mock import patch
 
 import ddt
 import jwt
+import pytest
 import responses
 import six
 from Cryptodome.PublicKey import RSA
-from django.contrib.auth.models import AnonymousUser
+from django.contrib.auth import get_user_model
+from django.contrib.sessions.middleware import SessionMiddleware
 from django.core.cache import cache
+from django.test import RequestFactory
+from django.test.utils import override_settings
 from social_core.tests.backends.oauth import OAuth2Test
+
+User = get_user_model()
 
 
 @ddt.ddt
@@ -120,6 +126,52 @@ class EdXOAuth2Tests(OAuth2Test):
     def test_login(self):
         self.do_login()
 
+    @pytest.mark.django_db
+    @ddt.data(True, False)  # Test session cleanup with both toggle enabled and disabled
+    @patch('auth_backends.backends.set_custom_attribute')
+    @patch('auth_backends.backends.logger')
+    def test_start_with_session_cleanup(self, toggle_enabled, mock_logger, mock_set_attr):
+        """Test start method for session cleanup of existing user with toggle variation."""
+        with override_settings(ENABLE_OAUTH_SESSION_CLEANUP=toggle_enabled):
+            existing_user = User.objects.create_user(username='existing_user', email='existing@example.com')
+
+            request = RequestFactory().get('/auth/login/edx-oauth2/')
+            request.user = existing_user
+
+            middleware = SessionMiddleware(lambda req: None)
+            middleware.process_request(request)
+            request.session.save()
+
+            initial_session_key = request.session.session_key
+
+            self.backend.strategy.request = request
+
+            self.do_start()
+
+            if toggle_enabled:
+                self.assertNotEqual(request.session.session_key, initial_session_key)
+
+                self.assertTrue(request.user.is_anonymous)
+
+                mock_set_attr.assert_any_call('session_cleanup.toggle_enabled', True)
+                mock_set_attr.assert_any_call('session_cleanup.logout_performed', True)
+                mock_set_attr.assert_any_call('session_cleanup.logged_out_username', 'existing_user')
+
+                mock_logger.info.assert_called_with(
+                    "OAuth start: Performing session cleanup for user '%s'",
+                    'existing_user'
+                )
+            else:
+                self.assertEqual(request.session.session_key, initial_session_key)
+
+                self.assertEqual(request.user, existing_user)
+                self.assertFalse(request.user.is_anonymous)
+
+                mock_set_attr.assert_any_call('session_cleanup.toggle_enabled', False)
+                mock_set_attr.assert_any_call('session_cleanup.logout_performed', False)
+
+                mock_logger.info.assert_not_called()
+
     def test_partial_pipeline(self):
         self.do_partial_pipeline()
 
@@ -189,178 +241,3 @@ class EdXOAuth2Tests(OAuth2Test):
             ('user_id', 'user_id', True),
             ('refresh_token', 'refresh_token', True),
         ])
-
-    @ddt.data(True, False)  # test toggle enabled/disabled for authenticated user
-    def test_start_method_authenticated_user_toggle_behavior(self, toggle_enabled):
-        """
-        Verify start() behavior specifically for authenticated users with toggle variations.
-        """
-        with patch('auth_backends.backends.ENABLE_OAUTH_SESSION_CLEANUP') as mock_toggle, \
-             patch('auth_backends.backends.logout') as mock_logout, \
-             patch('auth_backends.backends.set_custom_attribute') as mock_set_attr, \
-             patch('auth_backends.backends.logger') as mock_logger:
-
-            mock_user = Mock()
-            mock_user.is_authenticated = True
-            mock_user.username = 'testuser'
-
-            mock_request = Mock()
-            mock_request.user = mock_user
-
-            self.backend.strategy.request = mock_request
-
-            mock_toggle.is_enabled.return_value = toggle_enabled
-
-            with patch.object(
-                self.backend.__class__.__bases__[0], 'start', return_value='parent_start_result'
-            ) as mock_parent_start:
-                result = self.backend.start()
-
-                mock_toggle.is_enabled.assert_called()
-
-                mock_parent_start.assert_called_once()
-
-                self.assertEqual(result, 'parent_start_result')
-
-                if toggle_enabled:
-                    mock_logout.assert_called_once_with(mock_request)
-
-                    mock_set_attr.assert_has_calls([
-                        call('start.session_cleanup_toggle_enabled', True),
-                        call('start.has_request', True),
-                        call('start.user_authenticated_before_cleanup', True),
-                        call('start.logged_out_username', 'testuser'),
-                        call('start.session_cleanup_performed', True),
-                    ], any_order=True)
-
-                    mock_logger.info.assert_called_with(
-                        "OAuth start: Performing session cleanup for user '%s'",
-                        'testuser'
-                    )
-                else:
-                    mock_logout.assert_not_called()
-
-                    mock_set_attr.assert_has_calls([
-                        call('start.session_cleanup_toggle_enabled', False),
-                        call('start.has_request', True),
-                        call('start.user_authenticated_before_cleanup', True),
-                        call('start.session_cleanup_performed', False),
-                    ], any_order=True)
-
-                    mock_logger.info.assert_not_called()
-
-    @ddt.data(True, False)  # test toggle enabled/disabled for unauthenticated user
-    def test_start_method_with_unauthenticated_user(self, toggle_enabled):
-        """
-        Verify start() behavior with unauthenticated users with toggle variations.
-        """
-        with patch('auth_backends.backends.ENABLE_OAUTH_SESSION_CLEANUP') as mock_toggle, \
-             patch('auth_backends.backends.logout') as mock_logout, \
-             patch('auth_backends.backends.set_custom_attribute') as mock_set_attr, \
-             patch('auth_backends.backends.logger') as mock_logger:
-
-            mock_user = AnonymousUser()
-
-            mock_request = Mock()
-            mock_request.user = mock_user
-
-            self.backend.strategy.request = mock_request
-
-            mock_toggle.is_enabled.return_value = toggle_enabled
-
-            with patch.object(
-                self.backend.__class__.__bases__[0], 'start', return_value='parent_start_result'
-            ) as mock_parent_start:
-                result = self.backend.start()
-
-                mock_toggle.is_enabled.assert_called()
-
-                mock_parent_start.assert_called_once()
-
-                mock_logout.assert_not_called()
-
-                mock_set_attr.assert_has_calls([
-                    call('start.session_cleanup_toggle_enabled', toggle_enabled),
-                    call('start.has_request', True),
-                    call('start.user_authenticated_before_cleanup', False),
-                    call('start.session_cleanup_performed', False),
-                ], any_order=True)
-
-                mock_logger.info.assert_not_called()
-
-                self.assertEqual(result, 'parent_start_result')
-
-    @ddt.data(True, False)  # test toggle enabled/disabled
-    def test_start_method_handles_missing_request(self, toggle_enabled):
-        """
-        Verify that start() handles missing request object with proper observability and toggle variations.
-        """
-        with patch('auth_backends.backends.ENABLE_OAUTH_SESSION_CLEANUP') as mock_toggle, \
-             patch('auth_backends.backends.logout') as mock_logout, \
-             patch('auth_backends.backends.set_custom_attribute') as mock_set_attr, \
-             patch('auth_backends.backends.logger') as mock_logger:
-
-            if hasattr(self.backend.strategy, 'request'):
-                self.backend.strategy.request = None
-
-            mock_toggle.is_enabled.return_value = toggle_enabled
-
-            with patch.object(
-                self.backend.__class__.__bases__[0], 'start', return_value='parent_start_result'
-            ) as mock_parent_start:
-                result = self.backend.start()
-
-                mock_toggle.is_enabled.assert_called()
-
-                mock_logout.assert_not_called()
-
-                mock_parent_start.assert_called_once()
-
-                mock_set_attr.assert_has_calls([
-                    call('start.session_cleanup_toggle_enabled', toggle_enabled),
-                    call('start.has_request', False),
-                    call('start.user_authenticated_before_cleanup', False),
-                    call('start.session_cleanup_performed', False),
-                ], any_order=True)
-
-                mock_logger.info.assert_not_called()
-
-                self.assertEqual(result, 'parent_start_result')
-
-    @ddt.data(True, False)  # test toggle enabled/disabled
-    def test_start_method_handles_request_without_user(self, toggle_enabled):
-        """
-        Verify that start() handles request without user attribute with proper observability and toggle variations.
-        """
-        with patch('auth_backends.backends.ENABLE_OAUTH_SESSION_CLEANUP') as mock_toggle, \
-             patch('auth_backends.backends.logout') as mock_logout, \
-             patch('auth_backends.backends.set_custom_attribute') as mock_set_attr, \
-             patch('auth_backends.backends.logger') as mock_logger:
-
-            mock_request = Mock(spec=[])
-
-            self.backend.strategy.request = mock_request
-
-            mock_toggle.is_enabled.return_value = toggle_enabled
-
-            with patch.object(
-                self.backend.__class__.__bases__[0], 'start', return_value='parent_start_result'
-            ) as mock_parent_start:
-                result = self.backend.start()
-
-                mock_toggle.is_enabled.assert_called()
-
-                mock_logout.assert_not_called()
-
-                mock_parent_start.assert_called_once()
-
-                mock_set_attr.assert_has_calls([
-                    call('start.session_cleanup_toggle_enabled', toggle_enabled),
-                    call('start.has_request', True),
-                    call('start.user_authenticated_before_cleanup', False),
-                    call('start.session_cleanup_performed', False),
-                ], any_order=True)
-
-                mock_logger.info.assert_not_called()
-
-                self.assertEqual(result, 'parent_start_result')

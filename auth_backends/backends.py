@@ -90,17 +90,17 @@ class EdXOAuth2(BaseOAuth2):
     def start(self):
         """Initialize OAuth authentication with optional session cleanup."""
 
-        # .. custom_attribute_name: start.session_cleanup_toggle_enabled
+        # .. custom_attribute_name: session_cleanup.toggle_enabled
         # .. custom_attribute_description: Tracks whether the ENABLE_OAUTH_SESSION_CLEANUP
         #    toggle is enabled during OAuth start.
         set_custom_attribute('session_cleanup.toggle_enabled', ENABLE_OAUTH_SESSION_CLEANUP.is_enabled())
 
         request = self.strategy.request if hasattr(self.strategy, 'request') else None
 
-        # .. custom_attribute_name: start.has_request
+        # .. custom_attribute_name: session_cleanup.has_request
         # .. custom_attribute_description: Tracks whether a request object is available
         #    during OAuth start. True if request exists, False if missing.
-        set_custom_attribute('start.has_request', request is not None)
+        set_custom_attribute('session_cleanup.has_request', request is not None)
 
         user_authenticated = (
             request is not None and
@@ -108,7 +108,7 @@ class EdXOAuth2(BaseOAuth2):
             request.user.is_authenticated
         )
 
-        # .. custom_attribute_name: start.user_authenticated_before_cleanup
+        # .. custom_attribute_name: session_cleanup.logout_required
         # .. custom_attribute_description: Tracks whether a user was authenticated
         #    before session cleanup. True if user was logged in, False otherwise.
         set_custom_attribute('session_cleanup.logout_required', user_authenticated)
@@ -116,10 +116,10 @@ class EdXOAuth2(BaseOAuth2):
         if user_authenticated and ENABLE_OAUTH_SESSION_CLEANUP.is_enabled():
             existing_username = getattr(request.user, 'username', 'unknown')
 
-            # .. custom_attribute_name: start.logged_out_username
+            # .. custom_attribute_name: session_cleanup.logged_out_username
             # .. custom_attribute_description: Records the username that was logged out
             #    during session cleanup for tracking and debugging purposes.
-            set_custom_attribute('start.logged_out_username', existing_username)
+            set_custom_attribute('session_cleanup.logged_out_username', existing_username)
 
             logger.info(
                 "OAuth start: Performing session cleanup for user '%s'",
@@ -133,7 +133,7 @@ class EdXOAuth2(BaseOAuth2):
             #    actually performed during OAuth start.
             set_custom_attribute('session_cleanup.logout_performed', True)
         else:
-            set_custom_attribute('start.session_cleanup_performed', False)
+            set_custom_attribute('session_cleanup.logout_performed', False)
 
         return super().start()
 
