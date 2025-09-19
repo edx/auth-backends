@@ -131,7 +131,7 @@ class EdXOAuth2(BaseOAuth2):
             # .. custom_attribute_name: start.session_cleanup_performed
             # .. custom_attribute_description: Indicates that session cleanup was
             #    actually performed during OAuth start.
-            set_custom_attribute('start.session_cleanup_performed', True)
+            set_custom_attribute('session_cleanup.logout_performed', True)
         else:
             # .. custom_attribute_name: start.session_cleanup_performed
             # .. custom_attribute_description: Indicates that session cleanup was
