@@ -111,7 +111,7 @@ class EdXOAuth2(BaseOAuth2):
         # .. custom_attribute_name: start.user_authenticated_before_cleanup
         # .. custom_attribute_description: Tracks whether a user was authenticated
         #    before session cleanup. True if user was logged in, False otherwise.
-        set_custom_attribute('start.user_authenticated_before_cleanup', user_authenticated)
+        set_custom_attribute('session_cleanup.logout_required', user_authenticated)
 
         if user_authenticated and ENABLE_OAUTH_SESSION_CLEANUP.is_enabled():
             existing_username = getattr(request.user, 'username', 'unknown')
