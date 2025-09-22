@@ -13,17 +13,15 @@ Unreleased
 ----------
 
 
-[4.6.1] - 2025-08-26
+[4.6.1] - 2025-09-23
 --------------------
 
-Fixed
+Added
 ~~~~~
 
-* Fixed authentication issues where the social auth details username is not being respected as the user to be logged in in certain cases.
-  When the already logged-in user does not match the social auth details user, the pipeline should log in the new user, rather than leaving some other user logged in.
+* Enhanced OAuth2 authentication backend to logout any old session before initiating a new OAuth2 flow. This prevents user association conflicts with the previously logged-in user.
 
-  * Added temporary rollout toggle IGNORE_LOGGED_IN_USER_ON_MISMATCH to ensure the bug fix doesn't introduce any issues.
-  * Enhanced get_user_if_exists function with monitoring capabilities for debugging authentication conflicts.
+  * Added temporary rollout toggle ENABLE_OAUTH_SESSION_CLEANUP to control session cleanup during OAuth start process.
 
 [4.6.0] - 2025-06-18
 --------------------

@@ -2,15 +2,25 @@
 import datetime
 import json
 from calendar import timegm
+from unittest.mock import patch, call
 
+import ddt
 import jwt
+import pytest
 import responses
 import six
 from Cryptodome.PublicKey import RSA
+from django.contrib.auth import get_user_model
+from django.contrib.sessions.middleware import SessionMiddleware
 from django.core.cache import cache
+from django.test import RequestFactory
+from django.test.utils import override_settings
 from social_core.tests.backends.oauth import OAuth2Test
 
+User = get_user_model()
 
+
+@ddt.ddt
 class EdXOAuth2Tests(OAuth2Test):
     """ Tests for the EdXOAuth2 backend. """
 
@@ -115,6 +125,56 @@ class EdXOAuth2Tests(OAuth2Test):
 
     def test_login(self):
         self.do_login()
+
+    @pytest.mark.django_db
+    @ddt.data(True, False)  # Test session cleanup with both toggle enabled and disabled
+    @patch('auth_backends.backends.set_custom_attribute')
+    @patch('auth_backends.backends.logger')
+    def test_start_with_session_cleanup(self, toggle_enabled, mock_logger, mock_set_attr):
+        """Test start method for session cleanup of existing user with toggle variation."""
+        with override_settings(ENABLE_OAUTH_SESSION_CLEANUP=toggle_enabled):
+            existing_user = User.objects.create_user(username='existing_user', email='existing@example.com')
+
+            request = RequestFactory().get('/auth/login/edx-oauth2/')
+            request.user = existing_user
+
+            middleware = SessionMiddleware(lambda req: None)
+            middleware.process_request(request)
+            request.session.save()
+
+            initial_session_key = request.session.session_key
+
+            self.backend.strategy.request = request
+
+            self.do_start()
+
+            if toggle_enabled:
+                self.assertNotEqual(request.session.session_key, initial_session_key)
+
+                self.assertTrue(request.user.is_anonymous)
+
+                mock_set_attr.assert_has_calls([
+                    call('session_cleanup.toggle_enabled', True),
+                    call('session_cleanup.logout_performed', True),
+                    call('session_cleanup.logged_out_username', 'existing_user')
+                ], any_order=True)
+
+                mock_logger.info.assert_called_with(
+                    "OAuth start: Performing session cleanup for user '%s'",
+                    'existing_user'
+                )
+            else:
+                self.assertEqual(request.session.session_key, initial_session_key)
+
+                self.assertEqual(request.user, existing_user)
+                self.assertFalse(request.user.is_anonymous)
+
+                mock_set_attr.assert_has_calls([
+                    call('session_cleanup.toggle_enabled', False),
+                    call('session_cleanup.logout_performed', False)
+                ], any_order=True)
+
+                mock_logger.info.assert_not_called()
 
     def test_partial_pipeline(self):
         self.do_partial_pipeline()
