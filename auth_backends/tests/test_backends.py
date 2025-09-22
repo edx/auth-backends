@@ -2,7 +2,7 @@
 import datetime
 import json
 from calendar import timegm
-from unittest.mock import patch
+from unittest.mock import patch, call
 
 import ddt
 import jwt
@@ -153,9 +153,11 @@ class EdXOAuth2Tests(OAuth2Test):
 
                 self.assertTrue(request.user.is_anonymous)
 
-                mock_set_attr.assert_any_call('session_cleanup.toggle_enabled', True)
-                mock_set_attr.assert_any_call('session_cleanup.logout_performed', True)
-                mock_set_attr.assert_any_call('session_cleanup.logged_out_username', 'existing_user')
+                mock_set_attr.assert_has_calls([
+                    call('session_cleanup.toggle_enabled', True),
+                    call('session_cleanup.logout_performed', True),
+                    call('session_cleanup.logged_out_username', 'existing_user')
+                ], any_order=True)
 
                 mock_logger.info.assert_called_with(
                     "OAuth start: Performing session cleanup for user '%s'",
@@ -167,8 +169,10 @@ class EdXOAuth2Tests(OAuth2Test):
                 self.assertEqual(request.user, existing_user)
                 self.assertFalse(request.user.is_anonymous)
 
-                mock_set_attr.assert_any_call('session_cleanup.toggle_enabled', False)
-                mock_set_attr.assert_any_call('session_cleanup.logout_performed', False)
+                mock_set_attr.assert_has_calls([
+                    call('session_cleanup.toggle_enabled', False),
+                    call('session_cleanup.logout_performed', False)
+                ], any_order=True)
 
                 mock_logger.info.assert_not_called()
 
